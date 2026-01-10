@@ -5,15 +5,25 @@
 #define SPEED_SLOW 1000
 #define SPEED_FAST 200
 
+// #define SIG_REVERSE 1
+
+#ifdef SIG_REVERSE
+#define SIG_ON LOW
+#define SIG_OFF HIGH
+#else
+#define SIG_ON HIGH
+#define SIG_OFF LOW
+#endif
+
 #define P_STEP 9
 #define P_DIR 8
-#define P_DIR_LEFT HIGH
-#define P_DIR_RIGHT LOW
+#define P_DIR_LEFT SIG_ON
+#define P_DIR_RIGHT SIG_OFF
 
-#define P_IN_LEFT_SLOW 2
-#define P_IN_LEFT_FAST 3
-#define P_IN_RIGHT_SLOW 4
-#define P_IN_RIGHT_FAST 5
+#define P_IN_LEFT_FAST 4
+#define P_IN_LEFT_SLOW 5
+#define P_IN_RIGHT_SLOW 6
+#define P_IN_RIGHT_FAST 7
 
 enum InputCommands {
   CMD_NONE = 0,
@@ -32,8 +42,8 @@ void setup() {
 
   pinMode(P_DIR, OUTPUT);
   pinMode(P_STEP, OUTPUT);
-  digitalWrite(P_DIR, LOW);
-  digitalWrite(P_STEP, LOW);
+  digitalWrite(P_DIR, SIG_OFF);
+  digitalWrite(P_STEP, SIG_OFF);
 
   pinMode(P_IN_LEFT_SLOW, INPUT);
   pinMode(P_IN_LEFT_FAST, INPUT);
@@ -46,9 +56,9 @@ void loop() {
 
   if (Stepping) {
     // do the steps
-    digitalWrite(P_STEP, HIGH);
+    digitalWrite(P_STEP, SIG_ON);
     delayMicroseconds(Delay);
-    digitalWrite(P_STEP, LOW);
+    digitalWrite(P_STEP, SIG_OFF);
     delayMicroseconds(Delay);
 
     StepCounter = StepCounter + 1;
