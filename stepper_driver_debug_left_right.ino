@@ -3,9 +3,10 @@
 
 #define DISTANCE 3200
 #define SPEED_SLOW 1000
-#define SPEED_FAST 200
+#define SPEED_FAST 50
 
-// #define SIG_REVERSE 1
+//#define DEBUG 1
+#define SIG_REVERSE 1
 
 #ifdef SIG_REVERSE
 #define SIG_ON LOW
@@ -36,6 +37,7 @@ enum InputCommands {
 int StepCounter = 0;
 int Delay = SPEED_SLOW;
 int Stepping = false;
+char cmd = CMD_NONE;
 
 void setup() {
   Serial.begin(9600);
@@ -51,9 +53,21 @@ void setup() {
   pinMode(P_IN_RIGHT_FAST, INPUT);
 }
 
-void loop() {
-  char cmd;
+#ifdef DEBUG
+void debugPrint(const char* s) { Serial.print(s); }
+void debugPrintln(const char* s) { Serial.println(s); }
+void debugPrintCmd(const char* s) {
+  Serial.print(int(cmd));
+  Serial.print(" ");
+  Serial.println(s);
+}
+#else
+void debugPrint(const char* s) {}
+void debugPrintln(const char* s) {}
+void debugPrintCmd(const char* s) {}
+#endif
 
+void loop() {
   if (Stepping) {
     // do the steps
     digitalWrite(P_STEP, SIG_ON);
@@ -67,21 +81,24 @@ void loop() {
     {
       StepCounter = 0;
       Stepping = false;
+      cmd = CMD_NONE;
       Serial.println("done");
     }
   } else {
     // read input commands from buttons or serial
-    if(digitalRead(P_IN_LEFT_FAST) == HIGH) { cmd = CMD_LEFT_FAST; }
-    else if(digitalRead(P_IN_LEFT_SLOW) == HIGH) { cmd = CMD_LEFT_SLOW; }
-    else if(digitalRead(P_IN_RIGHT_FAST) == HIGH) { cmd = CMD_RIGHT_FAST; }
-    else if(digitalRead(P_IN_RIGHT_SLOW) == HIGH) { cmd = CMD_RIGHT_SLOW; }
-    else { cmd = CMD_NONE; }
+    if(digitalRead(P_IN_LEFT_FAST) == HIGH) { cmd = CMD_LEFT_FAST; debugPrintCmd("read left fast"); }
+    else if(digitalRead(P_IN_LEFT_SLOW) == HIGH) { cmd = CMD_LEFT_SLOW; debugPrintCmd("read left slow"); }
+    else if(digitalRead(P_IN_RIGHT_FAST) == HIGH) { cmd = CMD_RIGHT_FAST; debugPrintCmd("read right fast"); }
+    else if(digitalRead(P_IN_RIGHT_SLOW) == HIGH) { cmd = CMD_RIGHT_SLOW; debugPrintCmd("read right slow"); }
+    //else { cmd = CMD_NONE; printCmd("no buttons read"); }
 
     // already received command via buttons, flush serial buffer
     if(cmd != CMD_NONE) {
+      debugPrint("flushing serial...");
       while(Serial.available()) {
         Serial.read();
       }
+      debugPrintln("done");
     } else {
       if(Serial.available()) {
         char c = Serial.read();
@@ -98,6 +115,9 @@ void loop() {
           case 'f':
             cmd = CMD_RIGHT_FAST;
             break;
+          case '\n':
+          case '\r':
+            break;
           case 'h':
             Serial.println("commands:");
             Serial.println("a - left fast");
@@ -106,8 +126,10 @@ void loop() {
             Serial.println("f - right fast");
           default:
             cmd = CMD_NONE;
+            debugPrintCmd("serial, no cmd");
             break;
         }
+      }
     }
 
     if(cmd == CMD_LEFT_SLOW) {
@@ -130,6 +152,9 @@ void loop() {
         Serial.print("run right fast... ");
         digitalWrite(P_DIR, P_DIR_RIGHT);
         Stepping = true;
+    } else {
+      debugPrintCmd("no cmd, sleeping...");
+      delay(1000);
     }
   }
 }
