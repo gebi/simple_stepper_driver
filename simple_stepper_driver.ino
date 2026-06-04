@@ -34,10 +34,88 @@ enum InputCommands {
   CMD_RIGHT_FAST
 };
 
-int StepCounter = 0;
-int Delay = SPEED_SLOW;
+#include <Arduino.h>
+
+// debugging print helper for serial supporting
+//   debugPrint(10, "foo", "bar", 20, <and so on>);
+inline void debugPrintln() {
+  Serial.println();
+}
+
+template <typename T>
+inline void debugPrintOne(const T& value) {
+  Serial.print(value);
+}
+
+template <typename T, typename... Ts>
+inline void debugPrintMany(const T& first, const Ts&... rest) {
+  Serial.print(first);
+  debugPrintMany(rest...);
+}
+
+// Overload to terminate recursion
+inline void debugPrintMany() {
+  // nothing
+}
+
+// Public API: print without newline
+template <typename... Ts>
+inline void debugPrint(const Ts&... args) {
+  debugPrintMany(args...);
+}
+
+// Public API: print with newline
+template <typename... Ts>
+inline void debugPrintln(const Ts&... args) {
+  debugPrintMany(args...);
+  Serial.println();
+}
+
+#ifdef DEBUG
+  #define debugPrint(...)       debugPrint(__VA_ARGS__)
+  #define debugPrintln(...)     debugPrintln(__VA_ARGS__)
+  #define debugPrintCmd(...)     do {                     \
+                                    debugPrint((int)cmd, " ", __VA_ARGS__); \
+                                  } while (0)
+#else
+  #define debugPrint(...)       do { } while (0)
+  #define debugPrintln(...)     do { } while (0)
+  #define debugPrintCmd(...)    do { } while (0)
+#endif
+
+// Helper to ensure a minimal delay with optional time underrun detection when compiled with DEBUG
+struct EnsureDelay {
+  unsigned long _expected_endtime;
+  EnsureDelay() { _expected_endtime = 0; }
+  void EnsureDelay::start(int delay_us) { _expected_endtime = micros() + delay_us; }
+  void EnsureDelay::delay() {
+    unsigned long now = micros();
+    if(_expected_endtime == 0) {
+      debugPrintln("ERROR: uninitialized EnsureDelay %s:%d", __FILE__, __LINE__);
+    }
+    int timediff = now - _expected_endtime;
+    if(timediff >= 0) {
+      delayMicroseconds(timediff);
+      _expected_endtime = 0;
+    } else {
+      debugPrintln("time deadline not met, expected=%d, now=%d, diff=%d us", _expected_endtime, now, timediff);
+    }
+  }
+};
+
+// global state variable to initialize one count of DISTANCE steps being executed
+//  this switches off ui / serial input completely to have jitter free steps
 int Stepping = false;
+// used internal in step function to count number of steps up to DISTANCE steps
+int StepCounter = 0;
+// delay used in delayMicroseconds for either fast or slow stepper speed
+//  set from ui, read by stepping code
+auto ensure_step_end_delay = EnsureDelay::EnsureDelay();
+int Delay = SPEED_SLOW;
+// ui state variable what input cmd was given by user
+//  not strictly needed to be global, just in case and for debugging
 char cmd = CMD_NONE;
+
 
 void setup() {
   Serial.begin(9600);
@@ -53,27 +131,18 @@ void setup() {
   pinMode(P_IN_RIGHT_FAST, INPUT);
 }
 
-#ifdef DEBUG
-void debugPrint(const char* s) { Serial.print(s); }
-void debugPrintln(const char* s) { Serial.println(s); }
-void debugPrintCmd(const char* s) {
-  Serial.print(int(cmd));
-  Serial.print(" ");
-  Serial.println(s);
-}
-#else
-void debugPrint(const char* s) {}
-void debugPrintln(const char* s) {}
-void debugPrintCmd(const char* s) {}
-#endif
 
 void loop() {
   if (Stepping) {
     // do the steps
+    ensure_step_end_delay.delay();
     digitalWrite(P_STEP, SIG_ON);
     delayMicroseconds(Delay);
     digitalWrite(P_STEP, SIG_OFF);
-    delayMicroseconds(Delay);
+    // optimize end delay and "fold" code coming afterwards into this delay
+    //  make sure rest of delay is properly executed at the start of the NEXT loop(), see above.
+    ensure_step_end_delay.start(Delay);
+    //delayMicroseconds(Delay);
 
     StepCounter = StepCounter + 1;
 
