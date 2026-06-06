@@ -139,6 +139,9 @@ int Delay = SPEED_SLOW;
 char cmd = CMD_NONE;
 // flush serial after one cmd finished executing
 int flush_serial = false;
+// max value at end of cmd run
+int max_sg = 0;
+int max_rms = 0;
 
 /*
 #define STR_HELPER(x) #x
@@ -146,31 +149,26 @@ int flush_serial = false;
 #define printD(e) debugPrintln("\"", STR(e), "\"", e)
 */
 
-/*
-void drawScreen1() {
-  u8g2.clearBuffer();
-  u8g2.setFont(u8g2_font_6x10_tf);
-  u8g2.drawStr(0, 12, "SH1106 OLED OK");
-  u8g2.drawStr(0, 28, "AZ-Delivery 1.3");
-  u8g2.drawStr(0, 44, "Pro Micro D2/D3");
-  u8g2.sendBuffer();
-}
-*/
-
 void drawScreen() {
-  oled.clear();
-  oled.drawString(0, 0, "Hello from");
-  oled.drawString(0, 2, "Pro Micro");
-  oled.drawString(0, 4, "I2C D2/D3");
-  oled.drawString(0, 6, "SH1106 OLED");
+  //oled.clear();
+  oled.drawString(0, 0, "DIY StepperCtrl");
+  char tmp[17];
+  snprintf(tmp, sizeof(tmp)-1, "ms=%3d rms=%4d", tmcdriver.microsteps(), tmcdriver.rms_current());
+  oled.drawString(0, 2, tmp);
+  snprintf(tmp, sizeof(tmp)-1, "sg=%4d cs=%4d", tmcdriver.SG_RESULT(), tmcdriver.cs2rms(tmcdriver.cs_actual()));
+  oled.drawString(0, 4, tmp);
+  snprintf(tmp, sizeof(tmp)-1, "sg=%4d cs=%4d", max_sg, max_rms);
+  oled.drawString(0, 5, tmp);
 }
 
 void setup() {
   // setup oled
   Wire.begin();   // Pro Micro: D2 = SDA, D3 = SCL
   oled.begin();
+  oled.setBusClock(400000);
   oled.setPowerSave(0);
   oled.setFont(u8x8_font_chroma48medium8_r);
+  oled.clear();
   drawScreen();
 
   // setup ui pins
@@ -209,8 +207,8 @@ static inline int inc_microsteps(void) {
     int ms = tmcdriver.microsteps();
     int newms = ms > 128 ? 256 : ms << 1;
     tmcdriver.microsteps(newms);
-    newms = tmcdriver.microsteps();
-    serprintf(F("ms "), ms, F(" -> "), newms, F("\n"));
+    int newmsd = tmcdriver.microsteps();
+    serprintf(F("ms "), ms, F(" -> "), newms, F("/"), newmsd, F("\n"));
     return newms;
 }
 
@@ -218,8 +216,8 @@ static inline int dec_microsteps(void) {
     int ms = tmcdriver.microsteps();
     int newms = ms < 2 ? 1 : ms >> 1;
     tmcdriver.microsteps(newms);
-    newms = tmcdriver.microsteps();
-    serprintf(F("ms "), ms, F(" -> "), newms, F("\n"));
+    int newmsd = tmcdriver.microsteps();
+    serprintf(F("ms "), ms, F(" -> "), newms, F("/"), newmsd, F("\n"));
     return newms;
 }
 
@@ -227,21 +225,28 @@ static inline int inc_rms() {
   int rms = tmcdriver.rms_current();
   int newrms = rms > 1800 ? 2000 : rms + 200;
   tmcdriver.rms_current(newrms);
-  newrms = tmcdriver.rms_current();
-  serprintf(F("rms "), rms, F(" -> "), newrms, F("\n"));
+  int newrmsd = tmcdriver.rms_current();
+  serprintf(F("rms "), rms, F(" -> "), newrms, F("/"), newrmsd, F("\n"));
   return newrms;
 }
 static inline int dec_rms() {
   int rms = tmcdriver.rms_current();
   int newrms = rms < 400 ? 200 : rms - 200;
   tmcdriver.rms_current(newrms);
-  newrms = tmcdriver.rms_current();
-  serprintf(F("rms "), rms, F(" -> "), newrms, F("\n"));
+  int newrmsd = tmcdriver.rms_current();
+  serprintf(F("rms "), rms, F(" -> "), newrms, F("/"), newrmsd, F("\n"));
   return newrms;
 }
 
 void loop() {
   if (Stepping) {
+    if(StepCounter == 0) {
+      oled.clearLine(7);
+      oled.drawString(0, 7, "stepping...");
+    } /* else if (StepCounter % 128 == 0) {
+      // too slow... time underrun of 2700us!! wtf...
+      //oled.drawString(10, 7, String(StepCounter).c_str());
+    } */
     // do the steps
     ensure_step_end_delay.delay();
     digitalWrite(P_STEP, SIG_ON);
@@ -256,11 +261,20 @@ void loop() {
 
     if (StepCounter == DISTANCE)
     {
+      oled.clearLine(7);
+      max_sg = tmcdriver.SG_RESULT();
+      max_rms = tmcdriver.cs2rms(tmcdriver.cs_actual());
+      char tmp[17];
+      snprintf(tmp, sizeof(tmp)-1, "done      %5d", StepCounter);
+      oled.drawString(0, 7, tmp);
+      //oled.drawString(0, 7, "done");
+      //oled.drawString(10, 7, String(StepCounter).c_str());
       StepCounter = 0;
       Stepping = false;
       cmd = CMD_NONE;
       ensure_step_end_delay.stop();
       Serial.println("done");
+      drawScreen();
       flush_serial = true;
     }
   } else {
@@ -380,7 +394,9 @@ void loop() {
     } else {
       //debugPrintCmd("no cmd, sleeping...");
       //debugPrint(".");
-      delay(1);
+      //delay(1);
+      // slow enough to work as delay
+      drawScreen();
     }
   }
 }
