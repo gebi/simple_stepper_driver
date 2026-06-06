@@ -2,7 +2,9 @@
 // using step/direction interface of common stepper drivers
 
 #include <Arduino.h>
+#include <Wire.h>
 #include <TMCStepper.h>
+#include <U8g2lib.h>
 
 #define DISTANCE 3200
 #define SPEED_SLOW 1000
@@ -19,7 +21,7 @@
 #define SIG_OFF LOW
 #endif
 
-#define P_ENABLE 7
+#define P_ENABLE 16
 #define P_DIR 8
 #define P_STEP 9
 #define P_DIAG 10
@@ -34,10 +36,15 @@
 TMC2209Stepper tmcdriver(&Serial1, R_SENSE, DRIVER_ADDRESS);
 //TMC2209Stepper tmcdriver(14, 15, R_SENSE, DRIVER_ADDRESS);
 
-#define P_IN_LEFT_FAST 3
-#define P_IN_LEFT_SLOW 4
-#define P_IN_RIGHT_SLOW 5
-#define P_IN_RIGHT_FAST 6
+// HW i2c pin D2 / D3
+#define P_IN_LEFT_FAST 4
+#define P_IN_LEFT_SLOW 5
+#define P_IN_RIGHT_SLOW 6
+#define P_IN_RIGHT_FAST 7
+
+// SH1106 128x64 OLED over hardware I2C
+//U8G2_SH1106_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, /* reset=*/ U8X8_PIN_NONE);
+U8X8_SH1106_128X64_NONAME_HW_I2C oled(/* reset=*/ U8X8_PIN_NONE);
 
 enum InputCommands {
   CMD_NONE = 0,
@@ -139,7 +146,34 @@ int flush_serial = false;
 #define printD(e) debugPrintln("\"", STR(e), "\"", e)
 */
 
+/*
+void drawScreen1() {
+  u8g2.clearBuffer();
+  u8g2.setFont(u8g2_font_6x10_tf);
+  u8g2.drawStr(0, 12, "SH1106 OLED OK");
+  u8g2.drawStr(0, 28, "AZ-Delivery 1.3");
+  u8g2.drawStr(0, 44, "Pro Micro D2/D3");
+  u8g2.sendBuffer();
+}
+*/
+
+void drawScreen() {
+  oled.clear();
+  oled.drawString(0, 0, "Hello from");
+  oled.drawString(0, 2, "Pro Micro");
+  oled.drawString(0, 4, "I2C D2/D3");
+  oled.drawString(0, 6, "SH1106 OLED");
+}
+
 void setup() {
+  // setup oled
+  Wire.begin();   // Pro Micro: D2 = SDA, D3 = SCL
+  oled.begin();
+  oled.setPowerSave(0);
+  oled.setFont(u8x8_font_chroma48medium8_r);
+  drawScreen();
+
+  // setup ui pins
   pinMode(P_IN_LEFT_SLOW, INPUT);
   pinMode(P_IN_LEFT_FAST, INPUT);
   pinMode(P_IN_RIGHT_SLOW, INPUT);
