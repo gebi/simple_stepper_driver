@@ -31,8 +31,8 @@
 
 //HardwareSerial & TMC_SERIAL = Serial1;  // 32u4 extra UART
 //TMC2209Stepper tmcdriver(&TMC_SERIAL, R_SENSE, DRIVER_ADDRESS);
-//TMC2209Stepper tmcdriver(&Serial1, R_SENSE, DRIVER_ADDRESS);
-TMC2209Stepper tmcdriver(14, 15, R_SENSE, DRIVER_ADDRESS);
+TMC2209Stepper tmcdriver(&Serial1, R_SENSE, DRIVER_ADDRESS);
+//TMC2209Stepper tmcdriver(14, 15, R_SENSE, DRIVER_ADDRESS);
 
 #define P_IN_LEFT_FAST 3
 #define P_IN_LEFT_SLOW 4
@@ -129,6 +129,8 @@ int Delay = SPEED_SLOW;
 // ui state variable what input cmd was given by user
 //  not strictly needed to be global, just in case and for debugging
 char cmd = CMD_NONE;
+// flush serial after one cmd finished executing
+int flush_serial = false;
 
 /*
 #define STR_HELPER(x) #x
@@ -155,8 +157,8 @@ void setup() {
   digitalWrite(P_STEP, SIG_OFF);
 
   //TMC_SERIAL.begin(115200);
-  //Serial1.begin(115200);              // for hw serial
-  tmcdriver.beginSerial(115200);   // for sw serial
+  Serial1.begin(115200);              // for hw serial
+  //tmcdriver.beginSerial(115200);   // for sw serial
   tmcdriver.begin();                 // init driver over UART
   tmcdriver.toff(4);                 // enable driver (chopper)
   tmcdriver.rms_current(800);        // set motor current (mA)
@@ -190,9 +192,52 @@ void setup() {
   Serial.println("done");
 }
 
+static inline int inc_microsteps(void) {
+    int ms = tmcdriver.microsteps();
+    //int newms = ms < 1 ? 1 : ms < 256 ? ms << 1 : 256;
+    int newms = ms > 128 ? 256 : ms << 1;
+    Serial.print("Microsteps: ");
+    Serial.print(ms);
+    Serial.print(" -> ");
+    Serial.println(newms);
+    tmcdriver.microsteps(newms);
+    return newms;
+}
+
+static inline int dec_microsteps(void) {
+    int ms = tmcdriver.microsteps();
+    //int newms = ms > 256 ? 256 : ms > 0 ? ms >> 1 : 1;
+    int newms = ms < 2 ? 1 : ms >> 1;
+    Serial.print("Microsteps: ");
+    Serial.print(ms);
+    Serial.print(" -> ");
+    Serial.println(newms);
+    tmcdriver.microsteps(newms);
+    return newms;
+}
+
+static inline int inc_rms() {
+  int rms = tmcdriver.rms_current();
+  int newrms = rms > 1800 ? 2000 : rms + 200;
+  Serial.print("RMS: ");
+  Serial.print(rms);
+  Serial.print(" -> ");
+  Serial.println(newrms);
+  tmcdriver.rms_current(newrms);
+  return newrms;
+}
+static inline int dec_rms() {
+  int rms = tmcdriver.rms_current();
+  int newrms = rms < 400 ? 200 : rms - 200;
+  Serial.print("RMS: ");
+  Serial.print(rms);
+  Serial.print(" -> ");
+  Serial.println(newrms);
+  tmcdriver.rms_current(newrms);
+  return newrms;
+}
 
 void loop() {
-  int flush_serial = false;
   if (Stepping) {
     // do the steps
     ensure_step_end_delay.delay();
@@ -269,7 +314,6 @@ void loop() {
             }
 
             auto drvstatus = tmcdriver.DRV_STATUS();
-            Serial.println();
             debugPrintln("steps=", tmcdriver.microsteps());
             Serial.print(drvstatus, BIN);
             Serial.print(" ");
@@ -280,16 +324,28 @@ void loop() {
             Serial.println(digitalRead(P_DIAG));
             break;
           }
+          case '[':
+            dec_microsteps();
+            break;
+          case ']':
+            inc_microsteps();
+            break;
+          case '\'':
+            dec_rms();
+            break;
+          case '\\':
+            inc_rms();
+            break;
           case '\n':
             break;
           case '\r':
             break;
           case 'h':
             Serial.println("commands:");
-            Serial.println("a - left fast");
-            Serial.println("s - left slow");
-            Serial.println("d - right slow");
-            Serial.println("f - right fast");
+            Serial.println("a / s - fast / slow left");
+            Serial.println("f / d - fast / slow right");
+            Serial.println("[ / ] - inc/dec microsteps");
+            Serial.println("\' / \\ - inc/dec Motor Amps");
           default:
             cmd = CMD_NONE;
             //debugPrintCmd("serial, no cmd");
