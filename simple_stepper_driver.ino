@@ -82,6 +82,7 @@ inline void debugPrintln(const Ts&... args) {
   Serial.println();
 }
 
+#define serprintf(...) debugPrint(__VA_ARGS__)
 #ifdef DEBUG
   #define debugPrint(...)       debugPrint(__VA_ARGS__)
   #define debugPrintln(...)     debugPrintln(__VA_ARGS__)
@@ -166,74 +167,42 @@ void setup() {
   tmcdriver.en_spreadCycle(false);   // stealthChop
   tmcdriver.pwm_autoscale(true);
 
-  /* wrong lib - https://github.com/janelia-arduino/TMC2209
-  if(tmcdriver.isSetupAndCommunicating()) {
-    debugPrint("tmcdriver comm error")
-  }
-  auto status tmcdriver.getStatus();
-  printD(status.over_temperature_warning);
-  printD(status.over_temperature_warning);
-  printD(status.short_to_ground_a);
-  printD(status.short_to_ground_b);
-  printD(status.low_side_short_a);
-  printD(status.low_side_short_b);
-  printD(status.open_load_a);
-  printD(status.open_load_a);
-  printD(status.over_temperature_120c);
-  printD(status.over_temperature_143c);
-  printD(status.over_temperature_150c);
-  printD(status.over_temperature_157c);
-  printD(status.current_scaling);
-  printD(status.stealth_chop_mode);
-  printD(status.standstill);
-  */
-
   digitalWrite(P_ENABLE, SIG_OFF);      // enable driver
   Serial.println("done");
 }
 
 static inline int inc_microsteps(void) {
     int ms = tmcdriver.microsteps();
-    //int newms = ms < 1 ? 1 : ms < 256 ? ms << 1 : 256;
     int newms = ms > 128 ? 256 : ms << 1;
-    Serial.print("Microsteps: ");
-    Serial.print(ms);
-    Serial.print(" -> ");
-    Serial.println(newms);
     tmcdriver.microsteps(newms);
+    newms = tmcdriver.microsteps();
+    serprintf(F("ms "), ms, F(" -> "), newms, F("\n"));
     return newms;
 }
 
 static inline int dec_microsteps(void) {
     int ms = tmcdriver.microsteps();
-    //int newms = ms > 256 ? 256 : ms > 0 ? ms >> 1 : 1;
     int newms = ms < 2 ? 1 : ms >> 1;
-    Serial.print("Microsteps: ");
-    Serial.print(ms);
-    Serial.print(" -> ");
-    Serial.println(newms);
     tmcdriver.microsteps(newms);
+    newms = tmcdriver.microsteps();
+    serprintf(F("ms "), ms, F(" -> "), newms, F("\n"));
     return newms;
 }
 
 static inline int inc_rms() {
   int rms = tmcdriver.rms_current();
   int newrms = rms > 1800 ? 2000 : rms + 200;
-  Serial.print("RMS: ");
-  Serial.print(rms);
-  Serial.print(" -> ");
-  Serial.println(newrms);
   tmcdriver.rms_current(newrms);
+  newrms = tmcdriver.rms_current();
+  serprintf(F("rms "), rms, F(" -> "), newrms, F("\n"));
   return newrms;
 }
 static inline int dec_rms() {
   int rms = tmcdriver.rms_current();
   int newrms = rms < 400 ? 200 : rms - 200;
-  Serial.print("RMS: ");
-  Serial.print(rms);
-  Serial.print(" -> ");
-  Serial.println(newrms);
   tmcdriver.rms_current(newrms);
+  newrms = tmcdriver.rms_current();
+  serprintf(F("rms "), rms, F(" -> "), newrms, F("\n"));
   return newrms;
 }
 
@@ -313,15 +282,15 @@ void loop() {
               Serial.println(F("OK"));
             }
 
+            serprintf("ms=", tmcdriver.microsteps());
+            serprintf(" rms=", tmcdriver.rms_current(), "\n");
             auto drvstatus = tmcdriver.DRV_STATUS();
-            debugPrintln("steps=", tmcdriver.microsteps());
             Serial.print(drvstatus, BIN);
             Serial.print(" ");
             Serial.print(tmcdriver.SG_RESULT(), DEC);
             Serial.print(" ");
             Serial.println(tmcdriver.cs2rms(tmcdriver.cs_actual()), DEC);
-            Serial.print("diag=");
-            Serial.println(digitalRead(P_DIAG));
+            serprintf("dialg=", digitalRead(P_DIAG));
             break;
           }
           case '[':
@@ -341,11 +310,11 @@ void loop() {
           case '\r':
             break;
           case 'h':
-            Serial.println("commands:");
-            Serial.println("a / s - fast / slow left");
-            Serial.println("f / d - fast / slow right");
-            Serial.println("[ / ] - inc/dec microsteps");
-            Serial.println("\' / \\ - inc/dec Motor Amps");
+            Serial.println(F("commands:"));
+            Serial.println(F("a / s - fast / slow left"));
+            Serial.println(F("f / d - fast / slow right"));
+            Serial.println(F("[ / ] - inc/dec microsteps"));
+            Serial.println(F("\' / \\ - inc/dec Motor Amps"));
           default:
             cmd = CMD_NONE;
             //debugPrintCmd("serial, no cmd");
@@ -377,7 +346,7 @@ void loop() {
     } else {
       //debugPrintCmd("no cmd, sleeping...");
       //debugPrint(".");
-      delay(200);
+      delay(1);
     }
   }
 }
